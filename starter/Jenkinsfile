@@ -144,7 +144,7 @@ pipeline {
                 sh '''
                     for i in $(seq 1 30); do
                         if curl -fsS \
-                          http://host.docker.internal:8080/actuator/health; then
+                          http://host.docker.internal:8080/health; then
                             echo "Health check berhasil"
                             exit 0
                         fi
