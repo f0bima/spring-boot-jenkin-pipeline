@@ -1,52 +1,76 @@
+
 pipeline {
     agent any
 
     options {
         timestamps()
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
     }
 
     environment {
+        PROJECT_DIR = 'starter'
         APP_NAME = 'starter-backend'
         IMAGE_NAME = 'starter-backend'
         IMAGE_TAG = "${BUILD_NUMBER}"
+
         DB_URL = 'jdbc:postgresql://host.docker.internal:5444/spring-boot'
-        DB_USER = 'nyusss'
+        DB_CREDENTIALS_ID = 'starter-db-credentials'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+
+                sh '''
+                    test -f starter/pom.xml
+                    test -f starter/Dockerfile
+                    test -f starter/mvnw
+                    test -f starter/Jenkinsfile
+                '''
             }
         }
 
-        stage('Check Java') {
+        stage('Check Environment') {
             steps {
                 sh '''
                     java -version
-                    ./mvnw -version
                     docker version
+                    curl --version
                 '''
             }
         }
 
         stage('Build and Test') {
             steps {
-                sh '''
-                    chmod +x mvnw
-                    ./mvnw -B clean verify
-                '''
+                dir("${PROJECT_DIR}") {
+                    sh '''
+                        chmod +x mvnw
+                        ./mvnw -B clean verify
+                    '''
+                }
+            }
+
+            post {
+                always {
+                    junit(
+                        testResults: 'starter/**/target/surefire-reports/*.xml',
+                        allowEmptyResults: true
+                    )
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                    docker build \
-                      -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                      -t ${IMAGE_NAME}:latest .
-                '''
+                dir("${PROJECT_DIR}") {
+                    sh '''
+                        docker build \
+                          -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                          .
+                    '''
+                }
             }
         }
 
@@ -59,21 +83,23 @@ pipeline {
                         passwordVariable: 'MIGRATION_DB_PASSWORD'
                     )
                 ]) {
-                    sh '''
-                        set +x
+                    dir("${PROJECT_DIR}") {
+                        sh '''
+                            set +x
 
-                        ./mvnw -B \
-                          -Dflyway.url="${DB_URL}" \
-                          -Dflyway.user="${MIGRATION_DB_USER}" \
-                          -Dflyway.password="${MIGRATION_DB_PASSWORD}" \
-                          flyway:info
+                            ./mvnw -B \
+                              -Dflyway.url="${DB_URL}" \
+                              -Dflyway.user="${MIGRATION_DB_USER}" \
+                              -Dflyway.password="${MIGRATION_DB_PASSWORD}" \
+                              flyway:info
 
-                        ./mvnw -B \
-                          -Dflyway.url="${DB_URL}" \
-                          -Dflyway.user="${MIGRATION_DB_USER}" \
-                          -Dflyway.password="${MIGRATION_DB_PASSWORD}" \
-                          flyway:migrate
-                    '''
+                            ./mvnw -B \
+                              -Dflyway.url="${DB_URL}" \
+                              -Dflyway.user="${MIGRATION_DB_USER}" \
+                              -Dflyway.password="${MIGRATION_DB_PASSWORD}" \
+                              flyway:migrate
+                        '''
+                    }
                 }
             }
         }
@@ -88,17 +114,19 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        set +x
+
                         docker rm -f ${APP_NAME} || true
 
                         docker run -d \
-                        --name ${APP_NAME} \
-                        --restart unless-stopped \
-                        -p 8080:8080 \
-                        -e SPRING_DATASOURCE_URL="${DB_URL}" \
-                        -e SPRING_DATASOURCE_USERNAME="${RUNTIME_DB_USER}" \
-                        -e SPRING_DATASOURCE_PASSWORD="${RUNTIME_DB_PASSWORD}" \
-                        -e SPRING_FLYWAY_ENABLED=false \
-                        ${IMAGE_NAME}:${IMAGE_TAG}
+                          --name ${APP_NAME} \
+                          --restart unless-stopped \
+                          -p 8080:8080 \
+                          -e SPRING_DATASOURCE_URL="${DB_URL}" \
+                          -e SPRING_DATASOURCE_USERNAME="${RUNTIME_DB_USER}" \
+                          -e SPRING_DATASOURCE_PASSWORD="${RUNTIME_DB_PASSWORD}" \
+                          -e SPRING_FLYWAY_ENABLED=false \
+                          ${IMAGE_NAME}:${IMAGE_TAG}
                     '''
                 }
             }
@@ -108,12 +136,13 @@ pipeline {
             steps {
                 sh '''
                     for i in $(seq 1 30); do
-                      if curl -fsS http://localhost:8080/actuator/health; then
-                        echo "Health check berhasil"
-                        exit 0
-                      fi
+                        if curl -fsS \
+                          http://localhost:8080/actuator/health; then
+                            echo "Health check berhasil"
+                            exit 0
+                        fi
 
-                      sleep 2
+                        sleep 2
                     done
 
                     echo "Health check gagal"
@@ -126,11 +155,11 @@ pipeline {
 
     post {
         success {
-            echo 'CI/CD berhasil: build, migration, dan deployment selesai.'
+            echo 'CI/CD berhasil: build, migration, deployment, dan health check selesai.'
         }
 
         failure {
-            echo 'Pipeline gagal. Periksa stage yang gagal dan log Jenkins.'
+            echo 'Pipeline gagal. Periksa Console Output untuk menemukan stage yang gagal.'
         }
 
         always {
