@@ -10,6 +10,8 @@ pipeline {
 
     environment {
         PROJECT_DIR = 'starter'
+        MAVEN_IMAGE = 'eclipse-temurin:25-jdk'
+        JENKINS_CONTAINER = 'jenkins-local'
         APP_NAME = 'starter-backend'
         IMAGE_NAME = 'starter-backend'
         IMAGE_TAG = "${BUILD_NUMBER}"
@@ -35,9 +37,9 @@ pipeline {
         stage('Check Environment') {
             steps {
                 sh '''
-                    java -version
                     docker version
                     curl --version
+                    docker pull ${MAVEN_IMAGE}
                 '''
             }
         }
@@ -47,7 +49,12 @@ pipeline {
                 dir("${PROJECT_DIR}") {
                     sh '''
                         chmod +x mvnw
-                        ./mvnw -B clean verify
+                        docker run --rm \
+                          --volumes-from ${JENKINS_CONTAINER} \
+                          -v starter-m2-cache:/root/.m2 \
+                          -w "$PWD" \
+                          ${MAVEN_IMAGE} \
+                          ./mvnw -B clean verify
                     '''
                 }
             }
@@ -87,17 +94,17 @@ pipeline {
                         sh '''
                             set +x
 
-                            ./mvnw -B \
-                              -Dflyway.url="${DB_URL}" \
-                              -Dflyway.user="${MIGRATION_DB_USER}" \
-                              -Dflyway.password="${MIGRATION_DB_PASSWORD}" \
-                              flyway:info
-
-                            ./mvnw -B \
-                              -Dflyway.url="${DB_URL}" \
-                              -Dflyway.user="${MIGRATION_DB_USER}" \
-                              -Dflyway.password="${MIGRATION_DB_PASSWORD}" \
-                              flyway:migrate
+                            docker run --rm \
+                              --volumes-from ${JENKINS_CONTAINER} \
+                              -v starter-m2-cache:/root/.m2 \
+                              -w "$PWD" \
+                              -e DB_URL -e MIGRATION_DB_USER -e MIGRATION_DB_PASSWORD \
+                              ${MAVEN_IMAGE} \
+                              sh -c './mvnw -B \
+                                -Dflyway.url="$DB_URL" \
+                                -Dflyway.user="$MIGRATION_DB_USER" \
+                                -Dflyway.password="$MIGRATION_DB_PASSWORD" \
+                                flyway:info flyway:migrate'
                         '''
                     }
                 }
@@ -137,7 +144,7 @@ pipeline {
                 sh '''
                     for i in $(seq 1 30); do
                         if curl -fsS \
-                          http://localhost:8080/actuator/health; then
+                          http://host.docker.internal:8080/actuator/health; then
                             echo "Health check berhasil"
                             exit 0
                         fi
