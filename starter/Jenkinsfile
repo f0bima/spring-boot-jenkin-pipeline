@@ -44,7 +44,7 @@ pipeline {
             }
         }
 
-        stage('Build and Test') {
+        stage('Unit Test & Coverage') {
             steps {
                 dir("${PROJECT_DIR}") {
                     sh '''
@@ -54,7 +54,19 @@ pipeline {
                           -v starter-m2-cache:/root/.m2 \
                           -w "$PWD" \
                           ${MAVEN_IMAGE} \
-                          ./mvnw -B clean verify
+                          sh -c '
+                            ./mvnw -B clean test
+                            TEST_STATUS=$?
+
+                            ./mvnw -B jacoco:report
+                            REPORT_STATUS=$?
+
+                            if [ "$TEST_STATUS" -ne 0 ]; then
+                              exit "$TEST_STATUS"
+                            fi
+
+                            exit "$REPORT_STATUS"
+                          '
                     '''
                 }
             }
@@ -62,8 +74,15 @@ pipeline {
             post {
                 always {
                     junit(
-                        testResults: 'starter/**/target/surefire-reports/*.xml',
+                        testResults: "${PROJECT_DIR}/target/surefire-reports/TEST-*.xml",
                         allowEmptyResults: true
+                    )
+
+                    recordCoverage(
+                        tools: [[
+                            parser: 'JACOCO',
+                            pattern: "${PROJECT_DIR}/target/site/jacoco/jacoco.xml"
+                        ]]
                     )
                 }
             }
