@@ -14,7 +14,7 @@ services:
       SPRING_DATASOURCE_USERNAME: nyusss
       SPRING_DATASOURCE_PASSWORD: jonogemoy
 
-      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_LIQUIBASE_ENABLED: "false"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

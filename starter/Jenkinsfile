@@ -101,10 +101,10 @@ pipeline {
                               -e DB_URL -e MIGRATION_DB_USER -e MIGRATION_DB_PASSWORD \
                               ${MAVEN_IMAGE} \
                               sh -c './mvnw -B \
-                                -Dflyway.url="$DB_URL" \
-                                -Dflyway.user="$MIGRATION_DB_USER" \
-                                -Dflyway.password="$MIGRATION_DB_PASSWORD" \
-                                flyway:info flyway:migrate'
+                                -Dliquibase.url="$DB_URL" \
+                                -Dliquibase.username="$MIGRATION_DB_USER" \
+                                -Dliquibase.password="$MIGRATION_DB_PASSWORD" \
+                                liquibase:status liquibase:update'
                         '''
                     }
                 }
@@ -132,7 +132,7 @@ pipeline {
                           -e SPRING_DATASOURCE_URL="${DB_URL}" \
                           -e SPRING_DATASOURCE_USERNAME="${RUNTIME_DB_USER}" \
                           -e SPRING_DATASOURCE_PASSWORD="${RUNTIME_DB_PASSWORD}" \
-                          -e SPRING_FLYWAY_ENABLED=false \
+                          -e SPRING_LIQUIBASE_ENABLED=false \
                           ${IMAGE_NAME}:${IMAGE_TAG}
                     '''
                 }
